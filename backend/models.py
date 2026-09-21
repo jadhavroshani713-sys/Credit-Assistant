@@ -1,8 +1,7 @@
-﻿"""
+"""
 CREDIT ASSISTANT - ORM Models
-Phase 2: Database Schema
 
-Models defined here:
+Models:
     - User          → table: users
     - CreditProfile → table: credit_profiles
     - ScoreHistory  → table: score_history
@@ -11,7 +10,6 @@ Models defined here:
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean,
     DateTime,
     Float,
     ForeignKey,

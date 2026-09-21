@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 backend/venv/
 backend/__pycache__/
 __pycache__/
@@ -15,6 +15,10 @@ backend/.env
 backend/*.db
 *.db
 *.sqlite3
+
+# Pytest
+.pytest_cache/
+backend/.pytest_cache/
 
 # Node
 frontend/node_modules/
