@@ -43,4 +43,7 @@ export const api = {
   submitFinancial: (payload) => request('POST', '/financial-data', payload),
   getDashboard: (userId) => request('GET', `/dashboard/${userId}`),
   getRecommendations: (userId) => request('GET', `/recommendations/${userId}`),
+  getFinancialReport: (userId) => request('GET', `/report/${userId}`),
+  getPdfReportUrl: (userId) => `${BASE_URL}/report/pdf/${userId}`,
 };
+

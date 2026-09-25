@@ -1,4 +1,4 @@
-﻿"""
+"""
 CREDIT ASSISTANT - Phase 5 AI Recommendations Tests
 ===================================================
 
@@ -98,7 +98,7 @@ def test_recommendations_gemini_mocked_success(client):
         "improvement_guidance": "Consistent on-time payments will lift your score within 3-6 months.",
     }
 
-    with patch("main.get_recommendations_from_gemini", return_value=mock_gemini_result):
+    with patch("main.get_ai_recommendations", return_value=mock_gemini_result):
         r = client.get(f"/recommendations/{uid}")
         assert r.status_code == 200
         body = r.json()

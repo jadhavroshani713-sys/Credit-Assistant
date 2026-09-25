@@ -1,4 +1,4 @@
-﻿"""
+"""
 CREDIT ASSISTANT - Database Configuration
 Phase 2: SQLAlchemy engine, session, and base setup
 """
@@ -12,22 +12,28 @@ import os
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./credit_assistant.db")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+is_sqlite = DATABASE_URL.startswith("sqlite")
+connect_args = {"check_same_thread": False} if is_sqlite else {}
 
 # ---------------------------------------------------------------------------
 # Engine
 # ---------------------------------------------------------------------------
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Required for SQLite
+    connect_args=connect_args,
     echo=False,  # Set True to log all SQL statements during development
 )
 
-# Enable SQLite foreign-key enforcement (disabled by default in SQLite)
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+# Enable SQLite foreign-key enforcement (only for SQLite)
+if is_sqlite:
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 # ---------------------------------------------------------------------------
 # Session factory

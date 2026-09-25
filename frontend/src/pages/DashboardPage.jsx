@@ -149,6 +149,11 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDownloadPdf = () => {
+    const url = api.getPdfReportUrl(userId);
+    window.open(url, '_blank');
+  };
+
   const handleLogout = () => {
     sessionStorage.clear();
     navigate('/');
@@ -217,7 +222,12 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {dashboard?.has_financial_data && (
+              <button className="btn btn-primary btn-sm" onClick={handleDownloadPdf}>
+                📥 Download PDF Report
+              </button>
+            )}
             <button className="btn btn-secondary btn-sm" onClick={() => navigate('/onboarding')}>
               {dashboard?.has_financial_data ? 'Update Financial Data' : 'Submit Financial Data'}
             </button>
@@ -410,9 +420,12 @@ export default function DashboardPage() {
             {aiData && (
               <div style={{ marginTop: 24 }}>
                 {renderRecommendations(aiData)}
-                <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+                <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   <button className="btn btn-secondary btn-sm" onClick={handleGetRecommendations} disabled={aiLoading}>
                     Refresh AI Insights
+                  </button>
+                  <button className="btn btn-primary btn-sm" onClick={handleDownloadPdf}>
+                    📥 Download PDF Report
                   </button>
                 </div>
               </div>

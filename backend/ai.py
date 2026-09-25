@@ -1,9 +1,10 @@
 ﻿"""
-CREDIT ASSISTANT - Gemini AI Recommendations
-Phase 5: AI Integration
-
-Provides structured credit-health recommendations using the official Google GenAI SDK.
-Includes full error handling and contextual fallback generation.
+CREDIT ASSISTANT - Multi-Provider AI Recommendation Engine
+Supports:
+  - Groq API (GROQ_API_KEY)
+  - OpenAI API (OPENAI_API_KEY)
+  - Google Gemini API (GEMINI_API_KEY)
+  - Contextual Fallback Counselor (always available, 0 external dependencies)
 """
 
 import json
@@ -18,13 +19,14 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Fallback models in priority order
 _GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+_GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+_OPENAI_MODELS = ["gpt-4o-mini", "gpt-3.5-turbo"]
 
 
 def build_credit_prompt(profile: Any, user_name: str = "User") -> str:
     """
-    Construct an educational prompt for Gemini based on the user's financial profile.
+    Construct an educational prompt based on the user's financial profile.
     Tailored to the Indian credit ecosystem (CIBIL/Experian, RBI guidelines).
     """
     score = profile.credit_score if profile.credit_score is not None else "Not provided"
@@ -69,8 +71,7 @@ Return ONLY raw JSON. Do not include markdown code block syntax like ```json or 
 
 def generate_fallback_recommendations(profile: Any, user_name: str = "User", reason: str = "") -> Dict[str, Any]:
     """
-    Generate deterministic, rule-based credit guidance when Gemini is unavailable.
-    Ensures the user always receives a professional, highly relevant response.
+    Generate deterministic, rule-based credit guidance when external AI is unavailable.
     """
     score = profile.credit_score or 650
     util = profile.utilization or 0.0
@@ -78,7 +79,6 @@ def generate_fallback_recommendations(profile: Any, user_name: str = "User", rea
     dti = profile.debt_to_income or 0.0
     loans = profile.active_loans or 0
 
-    # Assessment
     if score >= 750:
         assessment = (
             f"Your credit profile demonstrates strong financial discipline with a healthy score of {score}. "
@@ -98,7 +98,6 @@ def generate_fallback_recommendations(profile: Any, user_name: str = "User", rea
             "With focused debt management and timely payments, credit rehabilitation is fully achievable over time."
         )
 
-    # Critical issues
     issues = []
     if missed > 0:
         issues.append(f"Recorded {missed} missed/late payment(s), severely dampening your credit score in bureau records.")
@@ -134,7 +133,7 @@ def generate_fallback_recommendations(profile: Any, user_name: str = "User", rea
     )
 
     if reason:
-        logger.info("Using fallback credit recommendations (Reason: %s)", reason)
+        logger.info("Using fallback credit counselor (Reason: %s)", reason)
 
     return {
         "overall_assessment": assessment,
@@ -144,73 +143,125 @@ def generate_fallback_recommendations(profile: Any, user_name: str = "User", rea
     }
 
 
+def _parse_ai_json(raw_text: str) -> Dict[str, Any]:
+    text = raw_text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    parsed = json.loads(text)
+    required = ["overall_assessment", "critical_issues", "recommendations", "improvement_guidance"]
+    if not all(k in parsed for k in required):
+        raise ValueError(f"Missing required keys in AI response: {parsed.keys()}")
+    return {
+        "overall_assessment": str(parsed["overall_assessment"]),
+        "critical_issues": [str(x) for x in parsed["critical_issues"]][:3],
+        "recommendations": [str(x) for x in parsed["recommendations"]][:5],
+        "improvement_guidance": str(parsed["improvement_guidance"]),
+    }
+
+
+def get_recommendations_from_groq(profile: Any, user_name: str = "User") -> Dict[str, Any]:
+    api_key = os.getenv("GROQ_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("GROQ_API_KEY not configured")
+
+    from groq import Groq
+    client = Groq(api_key=api_key)
+    prompt = build_credit_prompt(profile, user_name)
+
+    for model in _GROQ_MODELS:
+        try:
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "You are a professional financial counselor. Return only valid JSON."},
+                    {"role": "user", "content": prompt},
+                ],
+                model=model,
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+            content = chat_completion.choices[0].message.content
+            return _parse_ai_json(content)
+        except Exception as e:
+            logger.warning("Groq model %s failed: %s", model, e)
+    raise RuntimeError("All Groq models failed")
+
+
+def get_recommendations_from_openai(profile: Any, user_name: str = "User") -> Dict[str, Any]:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY not configured")
+
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+    prompt = build_credit_prompt(profile, user_name)
+
+    for model in _OPENAI_MODELS:
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are a financial counselor. Return valid JSON only."},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+            content = resp.choices[0].message.content
+            return _parse_ai_json(content)
+        except Exception as e:
+            logger.warning("OpenAI model %s failed: %s", model, e)
+    raise RuntimeError("All OpenAI models failed")
+
+
 def get_recommendations_from_gemini(profile: Any, user_name: str = "User") -> Dict[str, Any]:
-    """
-    Call Gemini API using google-genai SDK.
-    Falls back gracefully if key is missing, invalid, or API fails.
-    """
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
-
     if not api_key or api_key == "YOUR_GEMINI_API_KEY_HERE":
-        logger.warning("GEMINI_API_KEY is not configured. Serving intelligent fallback recommendations.")
-        return generate_fallback_recommendations(profile, user_name, reason="API key not configured")
+        raise ValueError("GEMINI_API_KEY not configured")
 
-    try:
-        from google import genai
-        from google.genai import types
+    from google import genai
+    from google.genai import types
 
-        client = genai.Client(api_key=api_key)
-        prompt = build_credit_prompt(profile, user_name)
+    client = genai.Client(api_key=api_key)
+    prompt = build_credit_prompt(profile, user_name)
+    config = types.GenerateContentConfig(response_mime_type="application/json", temperature=0.3)
 
-        config = types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0.3,
-        )
+    for model_name in _GEMINI_MODELS:
+        try:
+            response = client.models.generate_content(model=model_name, contents=prompt, config=config)
+            if response and response.text:
+                return _parse_ai_json(response.text)
+        except Exception as e:
+            logger.warning("Gemini model %s failed: %s", model_name, e)
+    raise RuntimeError("All Gemini models failed")
 
-        response = None
-        last_err = None
 
-        for model_name in _GEMINI_MODELS:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=config,
-                )
-                if response and response.text:
-                    break
-            except Exception as e:
-                last_err = e
-                logger.warning("Model %s failed: %s. Trying next model...", model_name, e)
+def get_ai_recommendations(profile: Any, user_name: str = "User") -> Dict[str, Any]:
+    """
+    Unified AI dispatcher matching the technical architecture:
+    Groq API -> OpenAI API -> Gemini API -> Fallback
+    """
+    # 1. Try Groq if GROQ_API_KEY is configured
+    if os.getenv("GROQ_API_KEY", "").strip():
+        try:
+            return get_recommendations_from_groq(profile, user_name)
+        except Exception as exc:
+            logger.warning("Groq AI failed (%s). Trying next provider...", exc)
 
-        if not response or not response.text:
-            logger.error("All Gemini models failed or returned empty response. Last error: %s", last_err)
-            return generate_fallback_recommendations(profile, user_name, reason="Gemini response empty/failed")
+    # 2. Try OpenAI if OPENAI_API_KEY is configured
+    if os.getenv("OPENAI_API_KEY", "").strip():
+        try:
+            return get_recommendations_from_openai(profile, user_name)
+        except Exception as exc:
+            logger.warning("OpenAI failed (%s). Trying next provider...", exc)
 
-        raw_text = response.text.strip()
-        if raw_text.startswith("```"):
-            raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
-            raw_text = re.sub(r"\s*```$", "", raw_text)
+    # 3. Try Gemini if GEMINI_API_KEY is configured
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if gemini_key and gemini_key != "YOUR_GEMINI_API_KEY_HERE":
+        try:
+            return get_recommendations_from_gemini(profile, user_name)
+        except Exception as exc:
+            logger.warning("Gemini AI failed (%s). Falling back to rules engine...", exc)
 
-        parsed = json.loads(raw_text)
-
-        required_keys = ["overall_assessment", "critical_issues", "recommendations", "improvement_guidance"]
-        if not all(k in parsed for k in required_keys):
-            logger.warning("Gemini returned JSON with missing keys: %s", parsed.keys())
-            return generate_fallback_recommendations(profile, user_name, reason="Missing schema keys in AI response")
-
-        if not isinstance(parsed["critical_issues"], list):
-            parsed["critical_issues"] = [str(parsed["critical_issues"])]
-        if not isinstance(parsed["recommendations"], list):
-            parsed["recommendations"] = [str(parsed["recommendations"])]
-
-        return {
-            "overall_assessment": str(parsed["overall_assessment"]),
-            "critical_issues": [str(x) for x in parsed["critical_issues"]][:3],
-            "recommendations": [str(x) for x in parsed["recommendations"]][:5],
-            "improvement_guidance": str(parsed["improvement_guidance"]),
-        }
-
-    except Exception as exc:
-        logger.error("Gemini API invocation error: %s", exc, exc_info=True)
-        return generate_fallback_recommendations(profile, user_name, reason=f"Gemini API exception: {str(exc)}")
+    # 4. Fallback counselor (guaranteed 100% uptime & zero downtime)
+    return generate_fallback_recommendations(profile, user_name, reason="No active AI keys or API limit reached")

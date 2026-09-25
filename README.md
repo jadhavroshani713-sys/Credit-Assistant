@@ -2,7 +2,27 @@
 
 > **AI-Powered Credit Health Analytics & Financial Counseling Platform**
 
-An end-to-end full-stack web application designed to evaluate credit-health metrics, calculate financial indicators (Credit Utilization, Debt-to-Income ratio, score trajectories), and deliver personalized, actionable credit improvement recommendations powered by **Google Gemini AI**.
+An end-to-end full-stack web application designed to evaluate credit-health metrics, calculate financial indicators (Credit Utilization, Debt-to-Income ratio, score trajectories), and deliver personalized, actionable credit improvement recommendations powered by **Groq**, **OpenAI**, or **Google Gemini AI**, with automated PDF report generation via **ReportLab**.
+
+---
+
+## Technical Architecture
+
+```
+                                 Send Financial Data & Queries
+[User] --> [Web Frontend] -----------------------------------------> [FastAPI Backend] <---> [AI Engine (Groq / OpenAI / Gemini)]
+             (React.js)   <-----------------------------------------       (Python)     <---  AI Analysis & Recommendations
+                             JSON Responses / Display Report                 |   ^
+                                                                             |   | Store & Retrieve User Data / Query Results
+                                                                             v   v
+                                                                   [Database (PostgreSQL / Supabase / SQLite)]
+                                                                             |
+                                                                             v
+                                                            [Financial Health Report (JSON)]
+                                                                             |
+                                                                             +---> [PDF Generation Service (ReportLab)]
+                                                                                   (Generates Official Credit PDF Report)
+```
 
 ---
 
@@ -10,15 +30,16 @@ An end-to-end full-stack web application designed to evaluate credit-health metr
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| **Backend Framework** | **FastAPI** `v0.141.1` | High-performance asynchronous REST API with auto-generated OpenAPI docs |
-| **Database & ORM** | **SQLAlchemy** `v2.0.54` + **SQLite** | Declarative ORM models, cascade constraints, and active foreign key pragmas |
+| **Web Frontend** | **React** `v19` + **Vite** `v8` | Single Page Application with fast HMR, interactive dashboard, and PDF report triggers |
+| **Routing** | **React Router** `v7` | Declarative route structure with `ProtectedRoute` session guards |
+| **Visualizations** | **Recharts** `v3` | Responsive doughnut charts (Credit Usage) & line charts (Score History Trend) |
+| **Backend Framework** | **FastAPI** `v0.141.1` | Asynchronous REST API with auto-generated OpenAPI documentation |
+| **AI Engine** | **Groq** / **OpenAI** / **Google Gemini** | Multi-provider AI counseling engine with resilient deterministic fallback |
+| **PDF Generation Service** | **ReportLab** `v5.0.1` | High-quality branded Credit Health & Financial Advisory PDF generator |
+| **Database & ORM** | **SQLAlchemy** `v2.0.54` | Flexible ORM supporting **PostgreSQL / Supabase** or local **SQLite** |
 | **Data Validation** | **Pydantic** `v2.13.5` + **email-validator** | Strict type-safety, schema validation, and serialization |
 | **Security & Hashing** | **bcrypt** `v5.0.0` | 12-round salt hashing; zero plaintext password exposure |
-| **AI Engine** | **Google GenAI SDK** `v2.24.0` | Structured credit counseling with resilient rule-based fallback |
-| **Frontend Framework** | **React** `v19` + **Vite** `v8` | Modern Single Page Application with fast HMR and client-side routing |
-| **Routing** | **React Router** `v7` | Declarative route structure with `ProtectedRoute` session guards |
-| **Visualizations** | **Recharts** `v3` | Responsive doughnut charts (Credit Usage) & line charts (Score Trend) |
-| **Testing** | **pytest** `v9.1.1` + **httpx** | Isolated in-memory `StaticPool` database test suite (21/21 tests passing) |
+| **Testing** | **pytest** `v9.1.1` + **httpx** | Isolated in-memory `StaticPool` database test suite (**28/28 tests passing**) |
 
 ---
 
@@ -31,16 +52,18 @@ CREDIT_ASSISTANT/
 │   │   ├── __init__.py
 │   │   ├── conftest.py             # Isolated in-memory SQLite fixtures (StaticPool)
 │   │   ├── test_api.py             # 16 core API & calculation tests
-│   │   └── test_recommendations.py # 5 Gemini AI & fallback recovery tests
+│   │   ├── test_pdf_report.py      # 7 PDF generation & financial report tests
+│   │   └── test_recommendations.py # 5 Multi-AI & fallback recovery tests
 │   ├── .env                        # Environment variables (gitignored)
 │   ├── .env.example                # Template for environment configuration
-│   ├── ai.py                       # Gemini AI prompt engine & contextual fallback
+│   ├── ai.py                       # Multi-Provider AI Engine (Groq / OpenAI / Gemini)
 │   ├── credit_assistant.db         # Local SQLite database (gitignored)
-│   ├── database.py                 # Engine, session factory & Base configuration
+│   ├── database.py                 # Engine, session factory (PostgreSQL / Supabase / SQLite)
 │   ├── main.py                     # FastAPI application & route declarations
 │   ├── models.py                   # User, CreditProfile & ScoreHistory ORM models
+│   ├── pdf_service.py              # ReportLab PDF Generation Service
 │   ├── requirements.txt            # Python dependencies with pinned versions
-│   ├── schemas.py                  # Pydantic v2 request and response schemas
+│   ├── schemas.py                  # Pydantic v2 request, response & report schemas
 │   ├── security.py                 # Bcrypt password hashing & verification helpers
 │   └── verify_db.py                # Database connection and integrity verification
 │
@@ -54,7 +77,7 @@ CREDIT_ASSISTANT/
 │   │   │   ├── RegisterPage.jsx    # User account creation form
 │   │   │   ├── LoginPage.jsx       # User authentication form
 │   │   │   ├── OnboardingPage.jsx  # Financial metrics ingestion form
-│   │   │   └── DashboardPage.jsx   # Metrics, charts & AI recommendation UI
+│   │   │   └── DashboardPage.jsx   # Metrics, charts, AI insights & PDF report download
 │   │   ├── App.jsx                 # Route definitions and authentication guard
 │   │   ├── index.css               # Global responsive dark theme styling
 │   │   └── main.jsx                # React application entry point
@@ -68,23 +91,6 @@ CREDIT_ASSISTANT/
 
 ---
 
-## Project Roadmap & Implementation Status
-
-| Phase | Phase Title | Status | Description |
-|---|---|:---:|---|
-| **Phase 1** | **Project Initialization & Environment Setup** | ✅ Completed | Project scaffolded, virtual environment created, Vite React app configured. |
-| **Phase 2** | **Database Schema & SQLAlchemy Models** | ✅ Completed | `User`, `CreditProfile`, `ScoreHistory` models built with cascade relationships. |
-| **Phase 3** | **API Architecture, Authentication & Core Routes** | ✅ Completed | `/register`, `/login`, `/financial-data`, `/dashboard/{id}` implemented. |
-| **Phase 4** | **Backend API Logic & Automated Testing** | ✅ Completed | Server-side calculations (DTI, utilization), Pytest suite with isolated test DB. |
-| **Phase 5** | **Gemini AI Integration & Full Frontend** | ✅ Completed | `GET /recommendations`, complete React UI, Recharts, E2E validation. |
-| **Phase 6** | **Advanced AI Prompts & Multi-Turn Advisor** | ⏳ Planned | Multi-turn AI chat dialog, CIBIL simulator, custom debt-payoff strategies. |
-| **Phase 7** | **Interactive Visualizations & Goal Simulators** | ⏳ Planned | What-If simulator, EMI calculators, interactive credit score milestone charts. |
-| **Phase 8** | **Comprehensive E2E Automation** | ⏳ Planned | Playwright/Cypress end-to-end browser testing suite across multiple devices. |
-| **Phase 9** | **Security Hardening & Production Auditing** | ⏳ Planned | JWT tokens with refresh cycles, Redis rate-limiting, CORS origin restrictions. |
-| **Phase 10** | **Containerization & Cloud Deployment** | ⏳ Planned | Docker Compose, Google Cloud Run deployment, PostgreSQL migration. |
-
----
-
 ## API Documentation
 
 All endpoints are self-documented via Swagger UI at **`http://localhost:8000/docs`**.
@@ -95,21 +101,21 @@ All endpoints are self-documented via Swagger UI at **`http://localhost:8000/doc
 |---|---|---|---|:---:|
 | `GET` | `/` | Root information & active phase | None | `200 OK` |
 | `GET` | `/health` | System health check | None | `200 OK` |
-| `POST` | `/register` | Create account (hashes password) | `RegisterRequest` | `201 Created` |
+| `POST` | `/register` | Create account (hashes password with bcrypt) | `RegisterRequest` | `201 Created` |
 | `POST` | `/login` | Authenticate user credentials | `LoginRequest` | `200 OK` |
 | `POST` | `/financial-data` | Ingest financial metrics & compute indicators | `FinancialDataRequest` | `201 Created` |
 | `GET` | `/dashboard/{user_id}` | Retrieve profile, metrics & score history | None | `200 OK` |
 | `GET` | `/recommendations/{user_id}` | Generate AI credit-health recommendations | None | `200 OK` |
+| `GET` | `/report/{user_id}` | Financial Health Report (JSON Response) | None | `200 OK` |
+| `GET` | `/report/pdf/{user_id}` | Download Generated PDF Credit Report (ReportLab) | None | `200 OK (PDF Stream)` |
 
 ### Server-Side Financial Formulas
 
-The server never trusts frontend computations. Key metrics are computed server-side:
-
 $$\text{Credit Utilization (\%)} = \text{round}\left(\frac{\text{credit\_used}}{\text{credit\_limit}} \times 100, 2\right)$$
-*(Safe against division-by-zero: defaults to $0.0\%$ if $\text{credit\_limit} = 0$)*
+*(Defaults to $0.0\%$ if $\text{credit\_limit} = 0$)*
 
 $$\text{Debt-to-Income (\%)} = \text{round}\left(\frac{\text{monthly\_expenses}}{\text{monthly\_salary}} \times 100, 2\right)$$
-*(Safe against division-by-zero: defaults to $0.0\%$ if $\text{monthly\_salary} = 0$)*
+*(Defaults to $0.0\%$ if $\text{monthly\_salary} = 0$)*
 
 $$\text{Score Improvement} = \text{new\_score} - \text{old\_score}$$
 *(First financial submission defaults to `null`)*
@@ -126,27 +132,16 @@ $$\text{Score Improvement} = \text{new\_score} - \text{old\_score}$$
 
 ### 1. Backend Setup
 
-Open a terminal and navigate to the backend directory:
-
 ```powershell
-# Navigate to backend
 cd backend
 
-# Create virtual environment (if not already created)
+# Create and activate virtual environment
 python -m venv venv
-
-# Activate virtual environment
-# Windows (PowerShell):
-.\venv\Scripts\activate
-# macOS/Linux:
-# source venv/bin/activate
+.\venv\Scripts\activate   # On Windows
+# source venv/bin/activate # On macOS/Linux
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Configure environment variables
-# Copy .env.example to .env and add your Gemini API key (optional)
-copy .env.example .env
 
 # Start the FastAPI server
 uvicorn main:app --reload --port 8000
@@ -159,13 +154,10 @@ uvicorn main:app --reload --port 8000
 
 ### 2. Frontend Setup
 
-Open a second terminal and navigate to the frontend directory:
-
 ```powershell
-# Navigate to frontend
 cd frontend
 
-# Install npm packages
+# Install dependencies
 npm install
 
 # Start Vite development server
@@ -180,11 +172,19 @@ npm run dev
 
 ### Backend (`backend/.env`)
 ```env
+# AI Engine Provider (Groq / OpenAI / Gemini)
+GROQ_API_KEY=YOUR_GROQ_API_KEY_HERE
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY_HERE
 GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
+
+# Database (PostgreSQL / Supabase or SQLite)
 DATABASE_URL=sqlite:///./credit_assistant.db
+# For PostgreSQL / Supabase, use:
+# DATABASE_URL=postgresql://user:password@aws-0-region.pooler.supabase.com:6543/postgres
+
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
 ```
-> **Note**: If `GEMINI_API_KEY` is not set or left as placeholder, the system automatically uses an intelligent, context-aware fallback counselor so features never crash.
+> **Resilient Fallback**: If no AI API key is configured, the system automatically uses an intelligent, context-aware rule-based counselor.
 
 ### Frontend (`frontend/.env`)
 ```env
@@ -195,27 +195,12 @@ VITE_API_URL=http://localhost:8000
 
 ## Running the Automated Test Suite
 
-### Backend Unit & Integration Tests (Pytest)
 ```powershell
 cd backend
 .\venv\Scripts\activate
 python -m pytest tests -v
 ```
-All **21 test cases** execute in an isolated in-memory SQLite database (`:memory:` with `StaticPool`), ensuring the development database is never modified.
-
-### Frontend Linting & Build Verification
-```powershell
-cd frontend
-npm run lint    # Oxlint verification (0 errors, 0 warnings)
-npm run build   # Production asset compilation
-```
-
----
-
-## Security & Data Privacy
-
-1. **No Plaintext Passwords**: Passwords are encrypted using `bcrypt` with a work factor of 12 before database storage.
-2. **Sanitized Responses**: Neither `password` nor `password_hash` is ever returned in any API response or logged.
-3. **Environment Security**: All sensitive keys remain in `.env` files which are excluded from Git version control.
-4. **Input Sanitization**: Pydantic v2 enforces schema boundaries and validates ranges (e.g., credit scores between 300 and 900).
-5. **Session Safety**: Frontend uses protected client-side routes; session data is managed securely via browser storage.
+All **28 test cases** pass with 100% success rate:
+- 16 core API & calculation tests
+- 7 PDF generation & financial report tests
+- 5 multi-AI & fallback recovery tests

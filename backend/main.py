@@ -20,6 +20,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
@@ -41,9 +42,11 @@ from schemas import (
     RegisterResponse,
     ScoreHistoryEntry,
     RecommendationResponse,
+    FinancialHealthReportResponse,
 )
 from security import hash_password, verify_password
-from ai import get_recommendations_from_gemini
+from ai import get_recommendations_from_gemini, get_ai_recommendations
+from pdf_service import generate_credit_report_pdf
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -411,11 +414,11 @@ def get_dashboard(user_id: int, db: DbDep):
 )
 def get_recommendations(user_id: int, db: DbDep):
     """
-    Generate tailored credit health guidance for a user using Google Gemini.
+    Generate tailored credit health guidance for a user using AI Engine (Groq / OpenAI / Gemini).
 
     - Verifies user exists (HTTP 404 if missing)
     - Retrieves latest CreditProfile (HTTP 404 if no profile exists)
-    - Sends structured prompt to Gemini with Indian credit context
+    - Sends structured prompt with Indian credit context
     - Returns structured JSON recommendations or professional fallback
     """
     user = db.query(User).filter(User.id == user_id).first()
@@ -438,6 +441,120 @@ def get_recommendations(user_id: int, db: DbDep):
             detail="No financial profile found for this user. Please submit financial data first.",
         )
 
-    result = get_recommendations_from_gemini(latest_profile, user_name=user.name)
+    result = get_ai_recommendations(latest_profile, user_name=user.name)
     return RecommendationResponse(**result)
+
+
+# ===========================================================================
+# GET /report/{user_id} (Financial Health Report - JSON Response)
+# ===========================================================================
+
+@app.get(
+    "/report/{user_id}",
+    response_model=FinancialHealthReportResponse,
+    tags=["Financial Report"],
+    summary="Retrieve comprehensive Financial Health Report (JSON Response)",
+)
+def get_financial_report(user_id: int, db: DbDep):
+    """
+    Generates a consolidated Financial Health Report as specified in the Technical Architecture.
+    Combines user details, financial indicators, score history, and AI insights.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id={user_id} not found.",
+        )
+
+    latest_profile = (
+        db.query(CreditProfile)
+        .filter(CreditProfile.user_id == user_id)
+        .order_by(CreditProfile.updated_at.desc())
+        .first()
+    )
+
+    history = (
+        db.query(ScoreHistory)
+        .filter(ScoreHistory.user_id == user_id)
+        .order_by(ScoreHistory.recorded_at.asc())
+        .all()
+    )
+
+    ai_recs = None
+    if latest_profile:
+        ai_dict = get_ai_recommendations(latest_profile, user_name=user.name)
+        ai_recs = RecommendationResponse(**ai_dict)
+
+    profile_data = DashboardProfileInfo.model_validate(latest_profile) if latest_profile else None
+    history_data = [ScoreHistoryEntry.model_validate(h) for h in history]
+
+    return FinancialHealthReportResponse(
+        user=DashboardUserInfo.model_validate(user),
+        profile=profile_data,
+        score_history=history_data,
+        ai_recommendations=ai_recs,
+        pdf_download_url=f"/report/pdf/{user_id}",
+        status="generated" if latest_profile else "pending_data",
+    )
+
+
+# ===========================================================================
+# GET /report/pdf/{user_id} (PDF Generation Service - ReportLab)
+# ===========================================================================
+
+@app.get(
+    "/report/pdf/{user_id}",
+    tags=["Financial Report"],
+    summary="Download Generated PDF Credit Report via ReportLab",
+)
+def download_pdf_report(user_id: int, db: DbDep):
+    """
+    Invokes the PDF Generation Service (ReportLab) to compile an official
+    Credit Health & Advisory PDF document for download.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id={user_id} not found.",
+        )
+
+    latest_profile = (
+        db.query(CreditProfile)
+        .filter(CreditProfile.user_id == user_id)
+        .order_by(CreditProfile.updated_at.desc())
+        .first()
+    )
+
+    if not latest_profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cannot generate PDF report without financial profile data.",
+        )
+
+    history = (
+        db.query(ScoreHistory)
+        .filter(ScoreHistory.user_id == user_id)
+        .order_by(ScoreHistory.recorded_at.asc())
+        .all()
+    )
+
+    ai_recs = get_ai_recommendations(latest_profile, user_name=user.name)
+
+    pdf_buffer = generate_credit_report_pdf(
+        user=user,
+        profile=latest_profile,
+        history=history,
+        ai_recommendations=ai_recs,
+    )
+
+    safe_name = "".join(c for c in user.name if c.isalnum() or c in (" ", "_", "-")).replace(" ", "_")
+    filename = f"Credit_Health_Report_{safe_name}_{user_id}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 

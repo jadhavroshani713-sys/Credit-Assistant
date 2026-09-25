@@ -177,3 +177,19 @@ class RecommendationResponse(BaseModel):
     recommendations: list[str]
     improvement_guidance: str
 
+
+# ---------------------------------------------------------------------------
+# Financial Health Report
+# ---------------------------------------------------------------------------
+
+class FinancialHealthReportResponse(BaseModel):
+    """Comprehensive Financial Health Report combining profile, history, AI guidance, and PDF links."""
+
+    user: DashboardUserInfo
+    profile: Optional[DashboardProfileInfo]
+    score_history: list[ScoreHistoryEntry]
+    ai_recommendations: Optional[RecommendationResponse]
+    pdf_download_url: str
+    status: str
+
+
